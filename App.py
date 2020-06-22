@@ -64,7 +64,7 @@ class MyApp(QtWidgets.QMainWindow, Ui_MainWindow,threading.Thread):
 		self._camera_top.Open()
 
 		self._camera_side.ExposureAuto.SetValue('Off')
-		self._camera_side.ExposureTimeRaw.SetValue(2500)
+		self._camera_side.ExposureTimeRaw.SetValue(2000)
 		self._camera_side.Gamma.SetValue(2)
 		self._camera_side.GammaEnable.SetValue(True)
 
@@ -97,7 +97,6 @@ class MyApp(QtWidgets.QMainWindow, Ui_MainWindow,threading.Thread):
 			h,w,_  = self._img_top.shape
 			self._img_top = QImage(self._img_top,w, h,QImage.Format_RGB888)
 			self.imageTop.setPixmap(QPixmap.fromImage(self._img_top))
-			print(1)
 
 	def _time_side(self):
 		grabResult_side = self._camera_side.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
