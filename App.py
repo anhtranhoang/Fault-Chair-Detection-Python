@@ -7,7 +7,7 @@ os.environ['MXNET_EXEC_BULK_EXEC_MAX_NODE_TRAIN_FWD'] = '999'
 os.environ['MXNET_EXEC_BULK_EXEC_MAX_NODE_TRAIN_BWD'] = '25'
 os.environ['MXNET_GPU_COPY_NTHREADS'] = '4'
 os.environ['MXNET_OPTIMIZER_AGGREGATION_SIZE'] = '54'
-
+import UI.bg
 import sys
 import time
 from shutil import copy
@@ -16,6 +16,7 @@ import cv2
 import mxnet as mx
 import numpy as np
 from pypylon import pylon
+import PyQt5
 from PyQt5 import QtCore, QtGui, QtWidgets, uic
 from PyQt5.QtGui import QImage, QPixmap
 from prediction import *
@@ -23,21 +24,69 @@ from threading import Thread
 import threading
 import cv2
 
-qtCreatorFile = "UI/demo.ui" # Enter file here.
-Ui_MainWindow, QtBaseClass = uic.loadUiType(qtCreatorFile)
 
 
+StyleSheet = '''
+
+QTabBar::tab:selected {
+    /* expand/overlap to the left and right by 4px */
+    margin-left: -4px;
+    margin-right: -4px;
+}
+
+QTabBar::tab:first:selected {
+    margin-left: 0; /* the first selected tab has nothing to overlap with on the left */
+}
+
+QTabBar::tab:last:selected {
+    margin-right: 0; /* the last selected tab has nothing to overlap with on the right */
+}
+
+QTabBar::tab:only-one {
+    margin: 0; /* if there is only one tab, we don't want overlapping margins */
+}
+
+QTabBar::tab{
+	background-color:qlineargradient(spread:pad,x1:0, y1:0, x2:1, y2:0, 
+													stop:0 rgba(245, 110, 32, 255), 
+													stop:0.5 rgba(245, 208, 32,255), 
+													stop:1 rgba(245, 110, 32, 255));
+
+	color: rgb(0, 0, 255);
+	border: 2px solid #C4C4C3;
+	border-bottom-color: #C2C7CB; /* same as the pane color */
+	border-top-left-radius: 8px;
+	border-top-right-radius: 8px;
+	min-width: 8ex;
+	padding: 2px;
+}
+QTabBar::tab:!selected {
+    margin-top: 5px; /* make non-selected tabs look smaller */
+}
+QTabBar::tab:selected, QTabBar::tab:hover {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #fafafa, stop: 0.4 #f4f4f4,
+                                stop: 0.5 #e7e7e7, stop: 1.0 #fafafa);
+}
+'''
+qtCreatorFile = "UI/trial_scancom_mutiltab.ui" # Enter file here.
+Ui_MainWindow, _ = uic.loadUiType(qtCreatorFile ,
+					from_imports=True,resource_suffix='', 
+					import_from='UI')
 
 
-class MyApp(QtWidgets.QMainWindow, Ui_MainWindow,threading.Thread):
+class MyApp(QtWidgets.QMainWindow, Ui_MainWindow):
 	def __init__(self):
-		threading.Thread.__init__(self)
 		QtWidgets.QMainWindow.__init__(self)
 		self.setWindowIcon(QtGui.QIcon('Images/vision.png'))
 		Ui_MainWindow.__init__(self)
 		self.setupUi(self)
-		self.weights = init_weights()
-
+		self.main_frame.setStyleSheet(StyleSheet)
+		# self.main_frame.setStyleSheet('QTabBar::tab{background-color:qlineargradient(spread:pad,\
+		# 								x1:0, y1:0, x2:1, y2:0, stop:0 rgba(245, 110, 32, 255), \
+		# 								stop:0.5 rgba(245, 208, 32,255), stop:1 rgba(245, 110, 32, 255));}')
+		self.main_frame.tabBar().setCursor(QtCore.Qt.PointingHandCursor)
+		# self.weights = init_weights()
 		#for video capture
 		self._timer_side = QtCore.QTimer(self, interval=5)
 		self._timer_side.timeout.connect(self._time_side)
@@ -45,42 +94,42 @@ class MyApp(QtWidgets.QMainWindow, Ui_MainWindow,threading.Thread):
 		self._timer_top.timeout.connect(self._time_top)
 
 		#button trigger
-		self.triggerSide.clicked.connect(self._trigger_side)
-		self.triggerTop.clicked.connect(self._trigger_top)
-		self.triggerDouble.clicked.connect(self._trigger_double)
-		self.startTesting.clicked.connect(self._start_testing)
+		# self.triggerSide.clicked.connect(self._trigger_side)
+		# self.triggerTop.clicked.connect(self._trigger_top)
+		# self.triggerDouble.clicked.connect(self._trigger_double)
+		# self.startTesting.clicked.connect(self._start_testing)
 
 
 
-		self._maxCamerasToUse = 2
-		self._tlFactory = pylon.TlFactory.GetInstance()
-		self._devices = self._tlFactory.EnumerateDevices()
-		self._cameras = pylon.InstantCameraArray(min(len(self._devices), self._maxCamerasToUse))
-		self._camera_side = self._cameras[0]
-		self._camera_top = self._cameras[1]
-		self._camera_side.Attach(self._tlFactory.CreateDevice(self._devices[0]))
-		self._camera_top.Attach(self._tlFactory.CreateDevice(self._devices[1]))
-		self._camera_side.Open()
-		self._camera_top.Open()
+		# self._maxCamerasToUse = 2
+		# self._tlFactory = pylon.TlFactory.GetInstance()
+		# self._devices = self._tlFactory.EnumerateDevices()
+		# self._cameras = pylon.InstantCameraArray(min(len(self._devices), self._maxCamerasToUse))
+		# self._camera_side = self._cameras[0]
+		# self._camera_top = self._cameras[1]
+		# self._camera_side.Attach(self._tlFactory.CreateDevice(self._devices[0]))
+		# self._camera_top.Attach(self._tlFactory.CreateDevice(self._devices[1]))
+		# self._camera_side.Open()
+		# self._camera_top.Open()
 
-		self._camera_side.ExposureAuto.SetValue('Off')
-		self._camera_side.ExposureTimeRaw.SetValue(2000)
-		self._camera_side.Gamma.SetValue(2)
-		self._camera_side.GammaEnable.SetValue(True)
+		# self._camera_side.ExposureAuto.SetValue('Off')
+		# self._camera_side.ExposureTimeRaw.SetValue(2000)
+		# self._camera_side.Gamma.SetValue(2)
+		# self._camera_side.GammaEnable.SetValue(True)
 
-		self._camera_top.ExposureAuto.SetValue('Off')
-		self._camera_top.ExposureTimeRaw.SetValue(28000)
-		self._camera_top.DigitalShift.SetValue(1)
-		self._camera_top.GammaEnable.SetValue(False)
-		self.threadpool = QtCore.QThreadPool()
-		self._cam_side = False
-		self._cam_top = False
-		self._valid_product = True
-		self._double_cam = False
-		self._check_top = False
-		self._is_waiting = True
-		self._img = None
-		self._start = False
+		# self._camera_top.ExposureAuto.SetValue('Off')
+		# self._camera_top.ExposureTimeRaw.SetValue(28000)
+		# self._camera_top.DigitalShift.SetValue(1)
+		# self._camera_top.GammaEnable.SetValue(False)
+		# self.threadpool = QtCore.QThreadPool()
+		# self._cam_side = False
+		# self._cam_top = False
+		# self._valid_product = True
+		# self._double_cam = False
+		# self._check_top = False
+		# self._is_waiting = True
+		# self._img = None
+		# self._start = False
 
 
 	def _time_top(self):

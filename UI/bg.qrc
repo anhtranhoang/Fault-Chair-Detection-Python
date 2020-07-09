@@ -1,0 +1,8 @@
+<RCC>
+  <qresource prefix="newPrefix">
+    <file>white.jpg</file>
+    <file>Moon Purple.png</file>
+    <file>Azur Lane.png</file>
+    <file>bg.qrc</file>
+  </qresource>
+</RCC>

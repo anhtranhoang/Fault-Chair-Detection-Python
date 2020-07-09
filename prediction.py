@@ -1,6 +1,6 @@
 import os
 os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
-from gluoncv import model_zoo, data, utils
+from gluoncv import model_zoo, data, utils 
 import matplotlib.pyplot as plt
 import mxnet as mx
 import cv2
