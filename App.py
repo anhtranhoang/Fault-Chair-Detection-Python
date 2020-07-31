@@ -1,5 +1,12 @@
-import json
 import os
+os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
+os.environ['MXNET_GPU_MEM_POOL_TYPE'] = 'Round'
+os.environ['MXNET_GPU_MEM_POOL_ROUND_LINEAR_CUTOFF'] = '26'
+os.environ['MXNET_EXEC_BULK_EXEC_MAX_NODE_TRAIN_FWD'] = '999'
+os.environ['MXNET_EXEC_BULK_EXEC_MAX_NODE_TRAIN_BWD'] = '25'
+os.environ['MXNET_GPU_COPY_NTHREADS'] = '4'
+os.environ['MXNET_OPTIMIZER_AGGREGATION_SIZE'] = '54'
+import json
 import sys
 import threading
 import time
@@ -17,19 +24,13 @@ from PyQt5 import QtCore, QtGui, QtWidgets, uic,QtSerialPort
 from PyQt5.QtGui import QImage, QPixmap,QIcon
 from PyQt5.QtWidgets import QMessageBox,QAction,QApplication
 import UI.bg
-# from prediction import *
+from prediction import *
 import PySimpleGUI as sg
 import tkinter
 import serial
 
 
-os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
-os.environ['MXNET_GPU_MEM_POOL_TYPE'] = 'Round'
-os.environ['MXNET_GPU_MEM_POOL_ROUND_LINEAR_CUTOFF'] = '26'
-os.environ['MXNET_EXEC_BULK_EXEC_MAX_NODE_TRAIN_FWD'] = '999'
-os.environ['MXNET_EXEC_BULK_EXEC_MAX_NODE_TRAIN_BWD'] = '25'
-os.environ['MXNET_GPU_COPY_NTHREADS'] = '4'
-os.environ['MXNET_OPTIMIZER_AGGREGATION_SIZE'] = '54'
+
 
 red = 'color: red;'
 green = 'color: green;'
@@ -97,7 +98,7 @@ class Process(QtCore.QThread):
 		QtCore.QThread.__init__(self)
 		self._type = type_img
 		self._img = images
-		print(self._img.shape)
+
 	def run(self):
 		if self._type == 'top':
 			self._img = cv2.resize(self._img,(self._img.shape[1]//2,self._img.shape[0]//2))
@@ -136,15 +137,7 @@ class MyApp(QtWidgets.QMainWindow,Ui_MainWindow):
 		# self.setWindowFlag(QtCore.Qt.FramelessWindowHint)
 
 		#init parameters into gpu		
-		# self.weights = init_weights()
-
-		# for video capture,declare all cameras's parameters
-		# self._timer_side = QtCore.QTimer(self, interval=5)
-		# self._timer_side.timeout.connect(self._time_side)
-		# self._timer_side_1 = QtCore.QTimer(self, interval=5)
-		# self._timer_side_1.timeout.connect(self._time_side_1)
-		# self._timer_top = QtCore.QTimer(self, interval=5)
-		# self._timer_top.timeout.connect(self._time_top)
+		self.weights = init_weights()
 
 		self._timer_wait = QtCore.QTimer(self, interval=5)
 		self._timer_wait.timeout.connect(self._soft_trigger)
@@ -190,24 +183,19 @@ class MyApp(QtWidgets.QMainWindow,Ui_MainWindow):
 		self._time_start = 20
 		self._process = True
 		self._render = False
-
+		self._shot = 100
 		self._button = 'UI/button.png'
 		self.box = QMessageBox()
 		self.box.setIcon(QMessageBox.Critical)
 		self.box.setWindowIcon(QtGui.QIcon('UI/close.jpg'))
-		# self.qTimer = QtCore.QTimer()
-		# self.qTimer.setInterval(100) # 1000 ms = 1 s
 
-		# # connect timeout signal to signal handler
-		# self.qTimer.timeout.connect(self._auto_render)
-		# self.qTimer.start()
-		self.pushButton.clicked.connect(self._trigger_soft)
-		# self._trigger_soft()
+		# connect timeout signal to signal handler
+		self.qTimer = QtCore.QTimer()
+		self.qTimer.setInterval(100) # 1000 ms = 1 s		
+		self.qTimer.timeout.connect(self._auto_render)
+		self.qTimer.start()
 
-		# self.serial_thread = SerialRead(self)
-		# self.serial_thread.serialUpdate.connect(self.handleSerialUpdate)
-		# self.pushButton.clicked.connect(self.startThread)
-
+		self._trigger_soft()
 
 	def closeEvent(self, event):
 		self.box.setWindowTitle('Thông báo')
@@ -215,16 +203,10 @@ class MyApp(QtWidgets.QMainWindow,Ui_MainWindow):
 		self.box.setStandardButtons(QMessageBox.Yes|QMessageBox.No)
 
 		buttonY = self.box.button(QMessageBox.Yes)
-		# buttonY.setStyleSheet(bt_style)
 		buttonY.setText('Có')
-		# buttonY.setIcon(QIcon(self._button))
-
 
 		buttonN = self.box.button(QMessageBox.No)
 		buttonN.setText('Không')
-		# buttonN.setStyleSheet(bt_style)
-		# buttonN.setIcon(QIcon(self._button))
-
 		self.box.exec_()
 
 		if self.box.clickedButton() == buttonY:
@@ -250,9 +232,6 @@ class MyApp(QtWidgets.QMainWindow,Ui_MainWindow):
 	def render_img(self,img,type_img,obj):
 		w0 = obj.geometry().width()
 		h0 = obj.geometry().height()
-		# if type_img == 'top':
-		# 		img = cv2.resize(img,(img.shape[1]//2,img.shape[0]//2))
-		# else :
 		img = cv2.resize(img,(w0,h0))
 		h,w,_  = img.shape
 		img = QImage(img,w, h,QImage.Format_RGB888)
@@ -274,10 +253,11 @@ class MyApp(QtWidgets.QMainWindow,Ui_MainWindow):
 		self.imageTop.setPixmap(QPixmap.fromImage(img))
 
 
-	def _time_top(self):
+	def _time_top(self,save_folder):
 		grabResult_top = self._camera_top.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
 		if grabResult_top.GrabSucceeded():
 			self._img_top = grabResult_top.Array
+			cv2.imwrite(os.path.join(save_folder,'{}.jpg'.format(time.time())),self._img_top)
 			self._img_top =  np.stack((self._img_top,)*3, axis=-1)
 			self._img_top = cv2.resize(self._img_top,(self._img_top.shape[1]//2,self._img_top.shape[0]//2))
 			temp = self._img_top.copy()
@@ -285,10 +265,11 @@ class MyApp(QtWidgets.QMainWindow,Ui_MainWindow):
 			self._camera_top.StopGrabbing()
 
 
-	def _time_side(self):
+	def _time_side(self,save_folder):
 		grabResult_side = self._camera_side.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
 		if grabResult_side.GrabSucceeded():
 			self._img_side = grabResult_side.Array
+			cv2.imwrite(os.path.join(save_folder,'{}.jpg'.format(time.time())),self._img_side)
 			self._img_side = np.stack((self._img_side,)*3, axis=-1)
 			temp = self._img_side.copy()
 			self._img_side = self._img_side[400:650,:]
@@ -296,34 +277,31 @@ class MyApp(QtWidgets.QMainWindow,Ui_MainWindow):
 			self._camera_side.StopGrabbing()
 
 
-	def _time_side_1(self):
+	def _time_side_1(self,save_folder):
 		grabResult_side_1 = self._camera_side_1.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
-		# print(grabResult_side_1.GrabSucceeded())
 		if grabResult_side_1.GrabSucceeded():
 			self._img_side_1 = grabResult_side_1.Array
+			cv2.imwrite(os.path.join(save_folder,'{}.jpg'.format(time.time())),self._img_side_1)
 			self._img_side_1 = np.stack((self._img_side_1,)*3, axis=-1)
 			temp = self._img_side_1.copy()
-			self._img_side_1 = self._img_side_1[400:650,:]
-			self._save_img_side_1 = temp[400:650,:].copy()
+			self._img_side_1 = self._img_side_1[500:750,:]
+			self._save_img_side_1 = temp[500:750,:].copy()
 			self._camera_side_1.StopGrabbing()
 
 	def _trigger_side(self):
 		if not self._timer_side.isActive() and self._process:
 			self._cam_side = True
-			# self._camera_side.StartGrabbing()
 			self._timer_side.start(self._time_start)
 
 	def _trigger_side_1(self):
 		if not self._timer_side_1.isActive() and self._process:
 			self._cam_side_1 = True
-			# self._camera_side_1.StartGrabbing()
 			self._timer_side_1.start(self._time_start)
 
 
 	def _trigger_top(self):
 		if not self._timer_top.isActive() and self._process:
 			self._cam_top = True
-			# self._camera_top.StartGrabbing()
 			self._timer_top.start(self._time_start)
 
 
@@ -336,70 +314,47 @@ class MyApp(QtWidgets.QMainWindow,Ui_MainWindow):
 			self._timer_wait.start(self._time_start)
 
 
-	# @QtCore.pyqtSlot()
-	# def receive(self):
-	# 	print(1)
-	# 	while self.serial.waitForReadyRead():
-	# 		print(2)
-	# 		text = self.serial.readLine().data().decode()
-	# 		text = text.rstrip('\r\n')
-	# 		print(text)
-	# 		# self.output_te.append(text)
-
 	def _soft_trigger(self):
-		# print(1)
 		b = self.serial.readLine()
-		# print(2)
 		string_n = b.data().decode() 
-		string = string_n.rstrip() 
-		print(string)
-		# if int(string):
-		# 	self._start_testing()
+		string = string_n.rstrip() 		
+		if string == '1':
+			print(string)	
+			time.sleep(0.1)		
+			self._start_testing()
 
 
 	def _start_testing(self):
 		if self._process:
+			name = 'img1/lan_{}'.format(self._shot)
+			self._shot += 1
+			os.mkdir(name)
 			tic = time.time()
 
 			self._camera_side.StartGrabbing()
 			self._camera_side_1.StartGrabbing()
 			self._camera_top.StartGrabbing()
+			self._time_side(name)
+			self._time_side_1(name)
+			self._time_top(name)
 
-			self._time_side()
-			self._time_side_1()
-			self._time_top()
+			self.t = Thread(target=self.render_img, args=(self._save_img_side,1,self.imageSide,))
+			self.t1 = Thread(target=self.render_img, args=(self._save_img_side_1,2,self.imageSide_1,))
+			self.t2 = Thread(target=self.render_img, args=(self._save_img_top,'top',self.imageTop,))
 
-			# self.t = Process(self._save_img_side_1,1)
-			# self.t1 = Process(self._save_img_side,1)
-			# self.t2 = Process(self._save_img_top,'top')
+			self.t.start()
+			self.t1.start()
+			self.t2.start()
 
-			# self.t.results.connect(self.render_side)
-			# self.t1.results.connect(self.render_side_1)
-			# self.t2.results.connect(self.render_top)
-
-			# self.t.start()
-			# self.t1.start()
-			# self.t2.start()
-
-			# self.t = Thread(target=self.render_img, args=(self._save_img_side,1,self.imageSide,))
-			# self.t1 = Thread(target=self.render_img, args=(self._save_img_side_1,2,self.imageSide_1,))
-			# self.t2 = Thread(target=self.render_img, args=(self._save_img_top,'top',self.imageTop,))
-
-			# self.t.start()
-			# self.t1.start()
-			# self.t2.start()
-
-			# self.t.join()
-			# self.t1.join()
-			# self.t2.join()
+			self.t.join()
+			self.t1.join()
+			self.t2.join()
 
 			self.time.setText(time.ctime())
-			# c = predict(self._save_img_side,self._save_img_side_1,self._save_img_top[500:,560:1760],self.weights,mx.gpu(0))
+			c = predict(self._save_img_side,self._save_img_side_1,self._save_img_top[500:,560:1760],self.weights,mx.gpu(0),name)
 
 			self._render = True
 			self.latency.setText("{} giây".format(round(time.time()-tic,2)))
-			c = []
-			# c = classes
 			items = [0]*6
 			for item in c[0]:
 				if item > 3 :
@@ -412,21 +367,8 @@ class MyApp(QtWidgets.QMainWindow,Ui_MainWindow):
 					continue
 				items[item] += 1
 
-			self._check_items(self.hardware,self.sttHardware,items[4],1)
-			self._check_items(self.sole,self.sttSole,items[5],1)
-
-			# self.hardware.setText(str(top_item[0]))
-			# if top_item[0] == 1:
-			# 	self.sttHardware.setText("Đạt")
-			# else:
-			# 	self._valid_product = False
-			# 	self.sttHardware.setText("Không Đạt")
-
-			# self.hardware.setText(str(top_item[1]))
-			# if top_item[1] == 1:
-			# 	self._valid_product = False
-			# 	self.hardware.setText("0")
-			# 	self.stthardware.setText("Không Đạt")
+			self._check_items(self.hardware,self.sttHardware,items[5],1)
+			self._check_items(self.sole,self.sttSole,items[4],1)
 
 			if self._valid_product:
 				self.sttProduct.setText("Đạt")
@@ -454,27 +396,6 @@ class MyApp(QtWidgets.QMainWindow,Ui_MainWindow):
 		self._check_items(self.backRight,self.sttBackRight,ls[2],1)
 		self._check_items(self.backLeft,self.sttBackLeft,ls[1],1)
 		self._check_items(self.frontLeg,self.sttFront,ls[3],2)
-
-		# self.backRight.setText(str(ls[2]))
-		# if ls[2] == 1 :
-		# 	self.sttBackRight.setText('Đạt')
-		# else:
-		# 	self._valid_product = False
-		# 	self.sttBackRight.setText('Không Đạt')
-
-		# self.backLeft.setText(str(ls[1]))
-		# if ls[1] == 1 :
-		# 	self.sttBackLeft.setText('Đạt')
-		# else:
-		# 	self._valid_product = False
-		# 	self.sttBackLeft.setText('Không Đạt')
-
-		# self.frontLeg.setText(str(ls[3]))
-		# if ls[3] == 2 :
-		# 	self.sttFront.setText('Đạt')
-		# else:
-		# 	self._valid_product = False
-		# 	self.sttFront.setText('Không Đạt')
 
 
 if __name__ == "__main__":
